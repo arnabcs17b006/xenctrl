@@ -1,4 +1,3 @@
-
 pub mod consts;
 pub mod error;
 mod libxenctrl;
@@ -12,6 +11,7 @@ use self::consts::PAGE_SIZE;
 use enum_primitive_derive::Primitive;
 use libxenctrl::LibXenCtrl;
 use num_traits::FromPrimitive;
+use std::io::Error;
 use std::{
     alloc::{alloc_zeroed, Layout},
     convert::TryInto,
@@ -25,7 +25,7 @@ pub use xenctrl_sys::{hvm_hw_cpu, hvm_save_descriptor, __HVM_SAVE_TYPE_CPU};
 use xenctrl_sys::{xc_error_code, xc_interface, xenmem_access_t, xentoollog_logger};
 use xenvmevent_sys::{
     vm_event_back_ring, vm_event_request_t, vm_event_response_t, vm_event_sring,
-    VM_EVENT_REASON_WRITE_CTRLREG,
+    VM_EVENT_REASON_WRITE_CTRLREG, VM_EVENT_X86_CR0, VM_EVENT_X86_CR3, VM_EVENT_X86_CR4,
 };
 
 use error::XcError;
@@ -33,10 +33,11 @@ use error::XcError;
 type Result<T> = std::result::Result<T, XcError>;
 
 #[derive(Primitive, Debug, Copy, Clone, PartialEq)]
+#[repr(u32)]
 pub enum XenCr {
-    Cr0 = 0,
-    Cr3 = 3,
-    Cr4 = 4,
+    Cr0 = VM_EVENT_X86_CR0,
+    Cr3 = VM_EVENT_X86_CR3,
+    Cr4 = VM_EVENT_X86_CR4,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -268,14 +269,20 @@ impl XenControl {
     pub fn monitor_software_breakpoint(&self, domid: u32, enable: bool) -> Result<()> {
         let xc = self.handle.as_ptr();
         (self.libxenctrl.clear_last_error)(xc);
-        (self.libxenctrl.monitor_software_breakpoint)(xc, domid, enable);
+        let rc = (self.libxenctrl.monitor_software_breakpoint)(xc, domid, enable);
+        if rc < 0 {
+            println!("last OS error: {:?}", Error::last_os_error());
+        }
         last_error!(self, ())
     }
 
     pub fn monitor_mov_to_msr(&self, domid: u32, msr: u32, enable: bool) -> Result<()> {
         let xc = self.handle.as_ptr();
         (self.libxenctrl.clear_last_error)(xc);
-        (self.libxenctrl.monitor_mov_to_msr)(xc, domid.try_into().unwrap(), msr, enable);
+        let rc = (self.libxenctrl.monitor_mov_to_msr)(xc, domid.try_into().unwrap(), msr, enable);
+        if rc < 0 {
+            println!("last OS error: {:?}", Error::last_os_error());
+        }
         last_error!(self, ())
     }
 
@@ -289,7 +296,7 @@ impl XenControl {
     ) -> Result<()> {
         let xc = self.handle.as_ptr();
         (self.libxenctrl.clear_last_error)(xc);
-        (self.libxenctrl.monitor_write_ctrlreg)(
+        let rc = (self.libxenctrl.monitor_write_ctrlreg)(
             xc,
             domid.try_into().unwrap(),
             index as u16,
@@ -297,6 +304,9 @@ impl XenControl {
             sync,
             onchangeonly,
         );
+        if rc < 0 {
+            println!("last OS error: {:?}", Error::last_os_error());
+        }
         last_error!(self, ())
     }
 
