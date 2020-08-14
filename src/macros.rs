@@ -89,12 +89,6 @@ macro_rules! RING_HAS_UNCONSUMED_REQUESTS {
     }};
 }
 
-macro_rules! RING_GET_REQUEST {
-    ($name1: ident, $name2: ident) => {
-        unsafe { &((*($name1.sring)).ring[($name2 & ($name1.nr_ents - 1)) as usize].req) }
-    };
-}
-
 macro_rules! RING_GET_RESPONSE {
     ($name1: ident, $name2: ident) => {
         unsafe { &mut ((*($name1.sring)).ring[($name2 & ($name1.nr_ents - 1)) as usize].rsp) }

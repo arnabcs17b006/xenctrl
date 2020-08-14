@@ -20,6 +20,7 @@ use std::{
     mem,
     os::raw::c_uint,
     ptr::{null_mut, NonNull},
+    slice,
 };
 pub use xenctrl_sys::{hvm_hw_cpu, hvm_save_descriptor, __HVM_SAVE_TYPE_CPU};
 use xenctrl_sys::{xc_error_code, xc_interface, xenmem_access_t, xentoollog_logger};
@@ -199,18 +200,14 @@ impl XenControl {
     }
 
     pub fn get_request(&self, back_ring: &mut vm_event_back_ring) -> Result<vm_event_request_t> {
-        let req_init = unsafe { mem::MaybeUninit::<vm_event_request_t>::zeroed().assume_init() };
-        let req_slice: &mut [vm_event_request_t] = &mut [req_init];
         let mut req_cons = back_ring.req_cons;
-        let req_from_ring = RING_GET_REQUEST!(back_ring, req_cons);
-        let req_from_ring_slice = unsafe { std::slice::from_raw_parts(req_from_ring, 1) };
-        req_slice[0..].copy_from_slice(&req_from_ring_slice[0..1]);
+        let req_from_ring = ring_get_request(back_ring, req_cons);
         req_cons += 1;
         back_ring.req_cons = req_cons;
         unsafe {
             (*(back_ring.sring)).req_event = 1 + req_cons;
         }
-        last_error!(self, (*req_slice)[0])
+        last_error!(self, req_from_ring)
     }
 
     pub fn put_response(
@@ -354,5 +351,17 @@ impl XenControl {
 impl Drop for XenControl {
     fn drop(&mut self) {
         self.close().unwrap();
+    }
+}
+
+fn ring_get_request(back_ring: &vm_event_back_ring, req_cons: u32) -> vm_event_request_t {
+    unsafe {
+        let ring_slice = slice::from_raw_parts(
+            (*back_ring.sring).ring.as_mut_ptr(),
+            back_ring.nr_ents as usize,
+        );
+        ring_slice[(req_cons & (back_ring.nr_ents - 1)) as usize]
+            .req
+            .clone()
     }
 }
